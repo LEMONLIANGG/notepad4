@@ -895,7 +895,6 @@ def check_comment(hwnd, rem, lst):
     print(f'    {"OK " if good else "FAIL"}  双击备注列弹出内联编辑框：{"出现" if good else "没出现"}')
     if not good:
         return False
-    focus_edit(hwnd, edit)
 
     # 先清掉原有备注，再敲新备注（全走真实按键）
     for _ in range(40):
@@ -933,7 +932,6 @@ def check_comment(hwnd, rem, lst):
     if not edit:
         print('    FAIL 第二次双击没能打开编辑框')
         return False
-    focus_edit(hwnd, edit)
     for _ in range(40):
         press_keys(0x08)		# VK_BACK
     press_keys(0x0D)
@@ -950,7 +948,6 @@ def check_comment(hwnd, rem, lst):
     if not edit:
         print('    FAIL 第三次双击没能打开编辑框')
         return False
-    focus_edit(hwnd, edit)
     type_text(note_text)
     press_keys(0x0D)
     time.sleep(0.6)
