@@ -429,6 +429,9 @@
     <ClCompile Include="..\..\src\EditEncoding.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\FolderBrowser.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\..\src\Helpers.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -918,6 +921,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\EditLexers/EditStyleX.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\FolderBrowser.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\src\Helpers.h">

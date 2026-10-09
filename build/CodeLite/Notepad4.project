@@ -299,6 +299,7 @@
     <File Name="../../src/Edit.cpp"/>
     <File Name="../../src/EditAutoC.cpp"/>
     <File Name="../../src/EditEncoding.cpp"/>
+    <File Name="../../src/FolderBrowser.cpp"/>
     <File Name="../../src/Helpers.cpp"/>
     <File Name="../../src/Notepad4.cpp"/>
     <File Name="../../src/Styles.cpp"/>
@@ -313,6 +314,7 @@
     <File Name="../../src/EditLexer.h"/>
     <File Name="../../src/EditLexers/EditStyle.h"/>
     <File Name="../../src/EditLexers/EditStyleX.h"/>
+    <File Name="../../src/FolderBrowser.h"/>
     <File Name="../../src/Helpers.h"/>
     <File Name="../../src/Notepad4.h"/>
     <File Name="../../src/resource.h"/>

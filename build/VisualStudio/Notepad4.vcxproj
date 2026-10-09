@@ -591,6 +591,7 @@
     <ClCompile Include="..\..\src\Edit.cpp" />
     <ClCompile Include="..\..\src\EditAutoC.cpp" />
     <ClCompile Include="..\..\src\EditEncoding.cpp" />
+    <ClCompile Include="..\..\src\FolderBrowser.cpp" />
     <ClCompile Include="..\..\src\Helpers.cpp" />
     <ClCompile Include="..\..\src\Notepad4.cpp" />
     <ClCompile Include="..\..\src\Styles.cpp" />
@@ -756,6 +757,7 @@
     <ClInclude Include="..\..\src\EditLexer.h" />
     <ClInclude Include="..\..\src\EditLexers/EditStyle.h" />
     <ClInclude Include="..\..\src\EditLexers/EditStyleX.h" />
+    <ClInclude Include="..\..\src\FolderBrowser.h" />
     <ClInclude Include="..\..\src\Helpers.h" />
     <ClInclude Include="..\..\src\Notepad4.h" />
     <ClInclude Include="..\..\src\Resource.h" />

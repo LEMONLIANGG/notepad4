@@ -38,6 +38,7 @@
 #include "Edit.h"
 #include "Styles.h"
 #include "Dialogs.h"
+#include "FolderBrowser.h"
 #include "resource.h"
 
 //! show code folding level and state on line number margin
@@ -66,8 +67,12 @@ static HACCEL hAccFindReplace;
 static HICON hTrayIcon = nullptr;
 static UINT uTrayIconDPI = 0;
 
+// 左侧内置文件夹浏览器（FolderBrowser.cpp）
+bool bShowFolderBrowser = true;
+int iFolderBrowserWidth = 220;
+
 #define TOOLBAR_COMMAND_BASE	IDT_FILE_NEW
-#define DefaultToolbarButtons	L"22 3 0 1 27 2 0 4 18 19 0 5 6 0 7 8 9 20 0 10 11 0 12 0 24 0 13 14 0 15 16 0 17"
+#define DefaultToolbarButtons	L"22 3 0 1 27 2 28 29 0 4 18 19 0 5 6 0 7 8 9 20 0 10 11 0 12 0 24 0 13 14 0 15 16 0 17"
 // NOLINTBEGIN(readability-redundant-zero-initializer)
 #if NP2_ENABLE_CUSTOMIZE_TOOLBAR_LABELS
 static TBBUTTON tbbMainWnd[] =
@@ -103,6 +108,8 @@ static const TBBUTTON tbbMainWnd[] =
 	{24, 	IDT_FILE_LAUNCH, 	TBSTATE_ENABLED, TBSTYLE_BUTTON, {0}, 0, 0},
 	{25, 	IDT_VIEW_ALWAYSONTOP, 	TBSTATE_ENABLED, TBSTYLE_BUTTON, {0}, 0, 0},
 	{26, 	IDT_FILE_NEWWINDOW, 	TBSTATE_ENABLED, TBSTYLE_BUTTON, {0}, 0, 0},
+	{27, 	IDT_FILE_OPENPREV, 	TBSTATE_ENABLED, TBSTYLE_BUTTON, {0}, 0, 0},
+	{28, 	IDT_FILE_OPENNEXT, 	TBSTATE_ENABLED, TBSTYLE_BUTTON, {0}, 0, 0},
 };
 // NOLINTEND(readability-redundant-zero-initializer)
 
@@ -1150,6 +1157,9 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 				DestroyWindow(hDlgFindReplace);
 			}
 
+			// Destroy the folder browser panel (and release its tree item data)
+			FolderBrowser_Destroy();
+
 			// call SaveSettings() when hwndToolbar is still valid
 			SaveAllSettings(true);
 			bitmapCache.Empty();
@@ -1258,6 +1268,11 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT umsg, WPARAM wParam, LPARAM lParam)
 	case WM_DROPFILES:
 	case APPM_DROPFILES:
 		MsgDropFiles(hwnd, umsg, wParam);
+		break;
+
+	case APPM_FOLDERBROWSER_NOTE:
+		// 文件夹浏览器：开始/结束备注的内联编辑
+		FolderBrowser_EndNoteEdit(wParam, lParam);
 		break;
 
 	case WM_COPYDATA: {
@@ -1856,6 +1871,9 @@ LRESULT MsgCreate(HWND hwnd, WPARAM wParam, LPARAM lParam) noexcept {
 	// Create Toolbar and Statusbar
 	CreateBars(hwnd, hInstance);
 
+	// Create the built-in folder browser side panel
+	FolderBrowser_Create(hwnd, hInstance);
+
 	// Window Initialization
 
 	(void)CreateWindowEx(0,
@@ -2057,6 +2075,7 @@ void MsgDPIChanged(HWND hwnd, WPARAM wParam, LPARAM lParam) noexcept {
 	UpdateFoldMarginWidth();
 	SciCall_SetFirstVisibleLine(iVisTopLine);
 	SciCall_EnsureVisible(iDocTopLine);
+	FolderBrowser_OnDpiChanged();
 	UpdateToolbar();
 	UpdateStatusbar();
 }
@@ -2102,7 +2121,7 @@ void MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam) noexcept {
 		return;
 	}
 
-	constexpr int x = 0;
+	int x = 0;
 	int y = 0;
 
 	const int cx = LOWORD(lParam);
@@ -2136,7 +2155,16 @@ void MsgSize(HWND hwnd, WPARAM wParam, LPARAM lParam) noexcept {
 		cy -= (rc.bottom - rc.top);
 	}
 
-	SetWindowPos(hwndEdit, nullptr, x, y, cx, cy, SWP_NOZORDER | SWP_NOACTIVATE);
+	// 左侧内置文件夹浏览器
+	int cxEdit = cx;
+	const int cxFolderBrowser = FolderBrowser_GetWidth();
+	if (cxFolderBrowser > 0) {
+		FolderBrowser_Layout(x, y, cx, cy);
+		x += cxFolderBrowser;
+		cxEdit = cx - cxFolderBrowser;
+	}
+
+	SetWindowPos(hwndEdit, nullptr, x, y, cxEdit, cy, SWP_NOZORDER | SWP_NOACTIVATE);
 
 	// resize Statusbar items
 	UpdateStatusbar();
@@ -2334,6 +2362,8 @@ void MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam) noexcept {
 		IDM_FILE_ADDTOFAV,
 		IDM_FILE_CREATELINK,
 		IDM_FILE_LAUNCH,
+		IDM_FILE_OPENNEXT,
+		IDM_FILE_OPENPREV,
 		IDM_FILE_OPEN_CONTAINING_FOLDER,
 		IDM_FILE_PROPERTIES,
 		IDM_FILE_READONLY_FILE,
@@ -2560,6 +2590,7 @@ void MsgInitMenu(HWND hwnd, WPARAM wParam, LPARAM lParam) noexcept {
 	CheckCmd(hmenu, IDM_VIEW_USE_LARGE_TOOLBAR, iAutoScaleToolbar > USER_DEFAULT_SCREEN_DPI);
 #endif
 	CheckCmd(hmenu, IDM_VIEW_STATUSBAR, bShowStatusbar);
+	CheckCmd(hmenu, IDM_VIEW_FOLDERBROWSER, bShowFolderBrowser);
 #if NP2_ENABLE_APP_LOCALIZATION_DLL
 	CheckMenuRadioItem(hmenu, IDM_LANG_USER_DEFAULT, IDM_LANG_LAST_LANGUAGE, languageMenu, MF_BYCOMMAND);
 #endif
@@ -2709,6 +2740,16 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 			EditSaveFile(szCurFile, FileSaveFlag_OriginalTimestamp | FileSaveFlag_UpdateTimestamp, status);
 			InstallFileWatching(false);
 		}
+		break;
+
+	case IDT_FILE_OPENPREV:
+	case IDM_FILE_OPENPREV:
+		FileOpenNeighbor(-1);
+		break;
+
+	case IDT_FILE_OPENNEXT:
+	case IDM_FILE_OPENNEXT:
+		FileOpenNeighbor(1);
 		break;
 
 	case IDM_FILE_READONLY_FILE:
@@ -3082,6 +3123,10 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 
 	case IDT_EDIT_COPY:
 	case IDM_EDIT_COPY:
+		// 文件夹浏览器列表有焦点时，Ctrl+C 复制文件名
+		if (FolderBrowser_CopyFromList(false)) {
+			break;
+		}
 		bLastCopyFromMe = true;
 		if (SciCall_IsSelectionEmpty() && iLineSelectionMode != LineSelectionMode_None) {
 			SciCall_LineCopy(iLineSelectionMode & LineSelectionMode_VisualStudio);
@@ -3206,6 +3251,10 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 		break;
 
 	case IDM_EDIT_COPYLINE:
+		// 文件夹浏览器列表有焦点时，Ctrl+Shift+C 复制完整路径
+		if (FolderBrowser_CopyFromList(true)) {
+			break;
+		}
 		bLastCopyFromMe = true;
 		SciCall_LineCopy(iLineSelectionMode & LineSelectionMode_VisualStudio);
 		UpdateToolbar();
@@ -4127,6 +4176,14 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 		ClearWindowPositionHistory();
 		break;
 
+	case IDM_VIEW_FOLDERBROWSER:
+		FolderBrowser_Toggle(hwnd);
+		break;
+
+	case IDM_FOLDERBROWSER_REFRESH:
+		FolderBrowser_Refresh();
+		break;
+
 	case IDM_VIEW_STICKY_WINDOW_POSITION:
 		if (!bStickyWindowPosition) {
 			SaveSettingsNow(false, true);
@@ -4641,6 +4698,11 @@ LRESULT MsgCommand(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 //
 LRESULT MsgNotify(HWND hwnd, WPARAM wParam, LPARAM lParam) {
 	UNREFERENCED_PARAMETER(wParam);
+
+	// 左侧文件夹浏览器的通知先处理
+	if (FolderBrowser_HandleNotify(hwnd, lParam)) {
+		return 0;
+	}
 
 	LPNMHDR pnmh = AsPointer<LPNMHDR>(lParam);
 	const SCNotification * const scn = AsPointer<SCNotification *>(lParam);
@@ -5317,6 +5379,9 @@ void LoadSettings() noexcept {
 	iAutoScaleToolbar = section.GetInt(L"AutoScaleToolbar", USER_DEFAULT_SCREEN_DPI);
 	bShowStatusbar = section.GetBool(L"ShowStatusbar", true);
 
+	bShowFolderBrowser = section.GetBool(L"ShowFolderBrowser", true);
+	iFolderBrowserWidth = clamp<int>(section.GetInt(L"FolderBrowserWidth", 400), 130, 800);
+
 	iValue = section.GetInt(L"FullScreenMode", FullScreenMode_Default);
 	iFullScreenMode = iValue;
 	bInFullScreenMode = iValue & FullScreenMode_OnStartup;
@@ -5554,6 +5619,8 @@ void SaveSettings(bool bSaveSettingsNow) noexcept {
 	section.SetBoolEx(L"ShowToolbar", bShowToolbar, true);
 	section.SetIntEx(L"AutoScaleToolbar", iAutoScaleToolbar, USER_DEFAULT_SCREEN_DPI);
 	section.SetBoolEx(L"ShowStatusbar", bShowStatusbar, true);
+	section.SetBoolEx(L"ShowFolderBrowser", bShowFolderBrowser, true);
+	section.SetIntEx(L"FolderBrowserWidth", iFolderBrowserWidth, 400);
 	section.SetIntEx(L"FullScreenMode", iFullScreenMode, FullScreenMode_Default);
 
 	SaveIniSection(INI_SECTION_NAME_SETTINGS, pIniSectionBuf);
@@ -6424,6 +6491,8 @@ void UpdateToolbar() noexcept {
 	const bool hasPath = StrNotEmpty(szCurFile);
 	EnableTool(IDT_FILE_ADDTOFAV, hasPath);
 	EnableTool(IDT_FILE_LAUNCH, hasPath);
+	EnableTool(IDT_FILE_OPENPREV, hasPath);
+	EnableTool(IDT_FILE_OPENNEXT, hasPath);
 
 	EnableTool(IDT_FILE_SAVE, IsDocumentModified());
 	EnableTool(IDT_EDIT_UNDO, SciCall_CanUndo());
@@ -6752,6 +6821,114 @@ bool FileIO(bool fLoad, LPWSTR pszFile, FileSaveFlag flag, EditFileIOStatus &sta
 
 //=============================================================================
 //
+// FileOpenNeighbor()
+//
+// Open the previous (direction < 0) or next (direction > 0) file in the
+// directory of the current file, using the same ordering as File Explorer.
+//
+//
+static int __cdecl CmpFileNameLogical(const void *s1, const void *s2) noexcept {
+	return StrCmpLogicalW(static_cast<LPCWSTR>(s1), static_cast<LPCWSTR>(s2));
+}
+
+void FileOpenNeighbor(int direction) noexcept {
+	if (StrIsEmpty(szCurFile)) {
+		return;
+	}
+
+	WCHAR tchDir[MAX_PATH];
+	lstrcpyn(tchDir, szCurFile, COUNTOF(tchDir));
+	PathRemoveFileSpec(tchDir);
+	if (StrIsEmpty(tchDir) || !PathIsDirectory(tchDir)) {
+		return;
+	}
+
+	LPCWSTR const pszName = PathFindFileName(szCurFile);
+	WCHAR tchPattern[MAX_PATH];
+	PathCombine(tchPattern, tchDir, L"*");
+
+	// Skip directories and files the user does not normally see
+	constexpr DWORD dwSkipMask = FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM;
+
+	// Pass 1: count the candidate files
+	int count = 0;
+	WIN32_FIND_DATA fd;
+	HANDLE hFind = FindFirstFile(tchPattern, &fd);
+	if (hFind == INVALID_HANDLE_VALUE) {
+		return;
+	}
+	do {
+		if ((fd.dwFileAttributes & dwSkipMask) == 0) {
+			++count;
+		}
+	} while (FindNextFile(hFind, &fd));
+	FindClose(hFind);
+
+	if (count < 2) {
+		return;
+	}
+
+	// Pass 2: collect the file names into fixed size slots
+	LPWSTR const pszNames = static_cast<LPWSTR>(NP2HeapAlloc(static_cast<size_t>(count) * MAX_PATH * sizeof(WCHAR)));
+	if (pszNames == nullptr) {
+		return;
+	}
+
+	int n = 0;
+	hFind = FindFirstFile(tchPattern, &fd);
+	if (hFind != INVALID_HANDLE_VALUE) {
+		do {
+			// n < count guards against files created between the two passes
+			if ((fd.dwFileAttributes & dwSkipMask) == 0 && n < count) {
+				lstrcpyn(pszNames + (n * MAX_PATH), fd.cFileName, MAX_PATH);
+				++n;
+			}
+		} while (FindNextFile(hFind, &fd));
+		FindClose(hFind);
+	}
+
+	int target = -1;
+	if (n > 1) {
+		qsort(pszNames, n, MAX_PATH * sizeof(WCHAR), CmpFileNameLogical);
+
+		int index = -1;
+		for (int i = 0; i < n; i++) {
+			if (StrCmpLogicalW(pszNames + (i * MAX_PATH), pszName) == 0) {
+				index = i;
+				break;
+			}
+		}
+
+		if (index < 0) {
+			// Current file is not in the list, start from an end of the list
+			target = (direction > 0) ? 0 : (n - 1);
+		} else {
+			target = index + direction;
+			if (target < 0) {
+				target = n - 1;		// wrap around
+			} else if (target >= n) {
+				target = 0;			// wrap around
+			}
+			if (target == index) {
+				target = -1;		// nothing else to open
+			}
+		}
+	}
+
+	WCHAR tchDest[MAX_PATH];
+	SetStrEmpty(tchDest);
+	if (target >= 0) {
+		PathCombine(tchDest, tchDir, pszNames + (target * MAX_PATH));
+	}
+	NP2HeapFree(pszNames);
+
+	if (StrNotEmpty(tchDest)) {
+		FileLoad(FileLoadFlag_Default, tchDest);
+	}
+}
+
+//=============================================================================
+//
 // FileLoad()
 //
 //
@@ -6988,6 +7165,8 @@ bool FileLoad(FileLoadFlag loadFlag, LPCWSTR lpszFile) {
 		//DisableDelayedStatusBarRedraw(); // already set in MsgSize()
 		UpdateStatusbar();
 		UpdateWindowTitle();
+		// 让左侧文件夹浏览器跟随当前文件
+		FolderBrowser_SyncToFile(szCurFile);
 		// Show warning: Unicode file loaded as ANSI
 		if (status.bUnicodeErr) {
 			MsgBoxWarn(MB_OK, IDS_ERR_UNICODE);

@@ -92,6 +92,11 @@ struct NP2PARAMS {
 #define IDC_REBAR			0xFB02
 #define IDC_EDIT			0xFB03
 #define IDC_FILENAME		0xFB05
+#define IDC_FOLDERBROWSER_TREE		0xFB06
+#define IDC_FOLDERBROWSER_LIST		0xFB07
+#define IDC_FOLDERBROWSER_SPLITTER_V	0xFB08
+#define IDC_FOLDERBROWSER_SPLITTER_H	0xFB09
+#define IDC_FOLDERBROWSER_NOTEEDIT		0xFB0A
 
 // submenu in popup menu, IDR_POPUPMENU
 #define IDP_POPUP_SUBMENU_EDIT	0
@@ -126,6 +131,7 @@ enum {
 // https://www.codeproject.com/tips/1017834/how-to-send-data-from-one-process-to-another-in-cs
 #define APPM_COPYDATA				(WM_APP + 6)
 #define APPM_DROPFILES				(WM_APP + 7)	// ScintillaWin::Drop()
+#define APPM_FOLDERBROWSER_NOTE		(WM_APP + 8)	// folder browser: finish inline comment editing
 
 #define ID_WATCHTIMER				0xA000	// file watch timer
 #define ID_PASTEBOARDTIMER			0xA001	// paste board timer
@@ -302,6 +308,7 @@ enum FileSaveFlag {
 
 bool FileIO(bool fLoad, LPWSTR pszFile, FileSaveFlag flag, EditFileIOStatus &status) noexcept;
 bool FileLoad(FileLoadFlag loadFlag, LPCWSTR lpszFile);
+void FileOpenNeighbor(int direction) noexcept;
 bool FileSave(FileSaveFlag saveFlag);
 bool OpenFileDlg(LPWSTR lpstrFile, int cchFile, LPCWSTR lpstrInitialDir);
 bool SaveFileDlg(FileSaveFlag saveFlag, LPWSTR lpstrFile, int cchFile, LPCWSTR lpstrInitialDir);
